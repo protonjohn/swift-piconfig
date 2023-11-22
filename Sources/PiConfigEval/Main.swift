@@ -11,11 +11,16 @@ import PiConfig
 
 @main
 struct PiConfigEval: ParsableCommand {
+    static let configuration = CommandConfiguration(commandName: "piconfig-eval")
+
     static var fileManager: FileManager = .default
     static var processInfo: ProcessInfo = .processInfo
 
-    @Flag(help: "Include environment variables in the initial definitions.")
-    var allowEnvVars: Bool = false
+    @Option(
+        name: .shortAndLong,
+        help: "Include environment variables in the initial definitions matching the given glob."
+    )
+    var includeEnv: [String] = []
 
     @Flag(help: "Verify that the configuration file is sane, without evaluating it.")
     var checkOnly: Bool = false
@@ -57,11 +62,12 @@ struct PiConfigEval: ParsableCommand {
             return
         }
 
-        var initialValues: PiConfig.Defines = [:]
-        if allowEnvVars {
-            initialValues = Self.processInfo.environment.reduce(into: [:], {
-                $0[.init(rawValue: $1.key)] = $1.value
-            })
+        var initialValues: PiConfig.Defines = includeEnvVars.reduce(into: [:]) {
+            for (key, value) in Self.processInfo.environment {
+                guard (fnmatch($1, key, FNM_NOESCAPE)) == 0 else { continue }
+
+                $0[.init(rawValue: key)] = value
+            }
         }
 
         let values = try state.eval(initialValues: defines.reduce(into: initialValues) {
