@@ -62,7 +62,7 @@ struct PiConfigEval: ParsableCommand {
             return
         }
 
-        var initialValues: PiConfig.Defines = includeEnvVars.reduce(into: [:]) {
+        let initialValues: PiConfig.Defines = includeEnv.reduce(into: [:]) {
             for (key, value) in Self.processInfo.environment {
                 guard (fnmatch($1, key, FNM_NOESCAPE)) == 0 else { continue }
 
