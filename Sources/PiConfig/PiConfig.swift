@@ -11,7 +11,7 @@ import Parsing
 public struct PiConfig {
     public typealias Defines = [Property: String?]
 
-    public struct Property: Hashable, Comparable {
+    public struct Property: Hashable, Comparable, CustomStringConvertible {
         public static func < (lhs: Self, rhs: Self) -> Bool {
             lhs.rawValue < rhs.rawValue
         }
@@ -22,21 +22,25 @@ public struct PiConfig {
             self.rawValue = rawValue
         }
 
+        public var description: String {
+            rawValue
+        }
+
         public static let inherited: Self = .init(rawValue: "inherited")
     }
 
-    public struct Value: Hashable {
+    public struct Value: Hashable, CustomStringConvertible {
         typealias StringOrReference = Either<String, Property>
 
         let interpolatedItems: [StringOrReference]
 
-        var stringValue: String {
+        public var description: String {
             interpolatedItems.reduce(into: "") { partialResult, item in
                 switch item {
                 case let .left(string):
                     partialResult += string
                 case let .right(variable):
-                    partialResult += "$(\(variable.rawValue))"
+                    partialResult += "$(\(variable))"
                 }
             }
         }
@@ -48,15 +52,19 @@ public struct PiConfig {
         static let falseyValues: Set<String> = ["NO", "false", "0"]
     }
 
-    public struct MatchValue: RawRepresentable, Hashable {
+    public struct MatchValue: RawRepresentable, Hashable, CustomStringConvertible {
         public let rawValue: String
 
         public init(rawValue: String) {
             self.rawValue = rawValue
         }
+
+        public var description: String {
+            rawValue
+        }
     }
 
-    public enum Condition: Hashable {
+    public enum Condition: Hashable, CustomStringConvertible {
         case falsey(Property)
         case truthy(Property)
         case equals(Property, MatchValue)
@@ -80,26 +88,26 @@ public struct PiConfig {
             return result
         }
 
-        public static func == (lhs: Self, rhs: Self) -> Bool {
-            switch lhs {
+        public var description: String {
+            switch self {
+            case .truthy(let property):
+                return "[\(property)]"
+            case .falsey(let property):
+                return "[!\(property)]"
             case let .equals(property, value):
-                guard case let .equals(rhsProperty, rhsValue) = rhs,
-                      property == rhsProperty, value == rhsValue else { return false }
-            case let .truthy(property):
-                guard case let .truthy(rhsProperty) = rhs,
-                      property == rhsProperty else { return false }
-            case let .falsey(property):
-                guard case let .falsey(rhsProperty) = rhs,
-                      property == rhsProperty else { return false }
+                return "[\(property)=\(value)]"
             }
-            return true
         }
     }
 
-    public struct Element {
+    public struct Element: CustomStringConvertible {
         public let property: Property
         public let conditions: Set<Condition>
         public let value: Value
+
+        public var description: String {
+            "\(property)\(conditions.map(\.description).joined()) = \(value)"
+        }
     }
 
     public let configItems: [Element]
@@ -108,12 +116,36 @@ public struct PiConfig {
         self.configItems = configItems
     }
 
+    public enum Error: Swift.Error {
+        case cycle([Property])
+        case conditionalAssignment(ofProperty: Property, conditions: [Condition], couldConflictWith: [Property])
+        case noInheritedValue(ofElement: Element)
+        case noDefaultValueProvided(forProperty: Property)
+    }
 }
 
-public enum EvalError: Error {
-    case cycle([PiConfig.Property])
-    case conditionalAssignment(ofProperty: PiConfig.Property, conditions: [PiConfig.Condition], couldConflictWith: [PiConfig.Property])
-    case noInheritedValue(ofElement: PiConfig.Element)
+extension PiConfig.Error: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .cycle(let properties):
+            return "Cycle detected among properties \(properties.map(\.description).joined(separator: ", "))."
+        case let .conditionalAssignment(property, conditions, conflictingProperties):
+            return """
+                Property assignment \(property)\(conditions.map(\.description).joined()) could conflict \
+                with conditions in the same assignment for properties \
+                \(conflictingProperties.map(\.description).joined(separator: ", ")).
+                """
+        case .noInheritedValue(let element):
+            return """
+                Element references an inherited value, but has no parent: \(element)
+                """
+
+        case .noDefaultValueProvided(let property):
+            return """
+                No default value was provided for \(property).
+                """
+        }
+    }
 }
 
 extension PiConfig.Element {

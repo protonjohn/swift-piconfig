@@ -22,6 +22,8 @@ Everything in a piconfig is interpreted as a string, and these strings may not s
 - A property is "truthy" if it is defined, and not set to "NO" or "false".
 - A property is "falsey" if it is undefined, or is equal to either "NO" or "false".
 
+If evaluating a configuration file with the `--format json` option specified, `piconfig-eval` will attempt to interpret basic types - booleans, ints, floats, strings, lists, and dictionaries - unless the `--no-typed-values` argument is passed.
+
 ### References
 
 Properties can also reference one or more other properties:
@@ -125,3 +127,18 @@ property[!foo] = $(inherited) false
 ```
 
 Here, `property` is set to `foo true` if `foo` is truthy, and `foo false` if `foo` is falsey.
+
+An `$(inherited)` value at the top-level means that the config file author expects a user to provide a default value for the property. For example:
+
+```
+property = $(inherited)
+property[foo] = foo true
+```
+
+Here, evaluation will fail with an error like "no default value provided for `property`" unless `foo` is truthy, in which case `property` will evaluate to `foo true`.
+
+## Contributing
+
+Pull requests are appreciated, but it would be wise to first discuss a feature before implementing it, to see if it aligns with this project's goals.
+
+Every minor release before Version 1.0.0 should be treated as containing breaking changes.

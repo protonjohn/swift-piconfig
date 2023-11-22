@@ -14,22 +14,34 @@ struct PiConfigEval: ParsableCommand {
     static var fileManager: FileManager = .default
     static var processInfo: ProcessInfo = .processInfo
 
-    @Flag()
+    @Flag(help: "Include environment variables in the initial definitions.")
     var allowEnvVars: Bool = false
 
-    @Flag()
+    @Flag(help: "Verify that the configuration file is sane, without evaluating it.")
     var checkOnly: Bool = false
 
-    @Option()
+    @Flag(
+        inversion: .prefixedNo,
+        help: "If using with '--format json', toggles value interpretation into types other than String."
+    )
+    var typedValues: Bool = true
+
+    @Option(help: "What the output format should be.")
     var format: OutputFormat = .dotenv
 
-    @Option(name: .shortAndLong)
+    @Option(
+        name: .shortAndLong,
+        help: "Where to write the output file (defaults to stdout)."
+    )
     var outputFile: String?
 
-    @Option(name: [.customShort("D", allowingJoined: true), .long])
+    @Option(
+        name: [.customShort("D", allowingJoined: true), .long],
+        help: "Define a property to a value before interpreting the file."
+    )
     var defines: [Define] = []
 
-    @Argument()
+    @Argument(help: "The configuration file to interpret.")
     var configFile: String
 
     func run() throws {
@@ -52,7 +64,7 @@ struct PiConfigEval: ParsableCommand {
             })
         }
 
-        let values = state.eval(initialValues: defines.reduce(into: initialValues) {
+        let values = try state.eval(initialValues: defines.reduce(into: initialValues) {
             $0[$1.property] = $1.value
         })
 
@@ -71,6 +83,12 @@ struct PiConfigEval: ParsableCommand {
             let jsonDict = values.reduce(into: [String: Any]()) {
                 let (key, value) = $1
 
+                guard let value else { return }
+                guard typedValues else {
+                    $0[key.rawValue] = value
+                    return
+                }
+
                 let result: Any
                 switch value {
                 case "true", "YES":
@@ -78,12 +96,14 @@ struct PiConfigEval: ParsableCommand {
                 case "false", "NO":
                     result = false
                 default:
-                    guard let value else { return }
-
                     if let int = Int(value) {
                         result = int
                     } else if let double = Double(value) {
                         result = double
+                    } else if value.couldBeJSON,
+                        let data = value.data(using: .utf8),
+                        let object = try? JSONSerialization.jsonObject(with: data) {
+                        result = object
                     } else {
                         result = value
                     }
@@ -116,6 +136,13 @@ extension Define {
             property: .init(rawValue: String(components.first!)),
             value: components.count > 1 ? String(components[1]) : "YES"
         )
+    }
+}
+
+extension String {
+    var couldBeJSON: Bool {
+        return first == "[" && last == "]" ||
+            first == "{" && last == "}"
     }
 }
 

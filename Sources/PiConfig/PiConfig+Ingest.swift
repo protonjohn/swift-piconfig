@@ -33,8 +33,14 @@ extension PiConfig {
         var value = element.value
         var inheritedValues = inheritedValues
         while value.references.contains(.inherited) {
+            guard !element.conditions.isEmpty else {
+                // If we're at the top-level, include the `$(inherited)` reference. A top-level `$(inherited)` value
+                // means the user is expected to define a value on the command line.
+                return element
+            }
+
             guard !inheritedValues.isEmpty else {
-                throw EvalError.noInheritedValue(ofElement: element)
+                throw Error.noInheritedValue(ofElement: element)
             }
 
             let inherited = inheritedValues.removeFirst()
@@ -91,12 +97,12 @@ extension PiConfig {
 
             let references = configItem.value.references
             guard !references.contains(property) else {
-                throw EvalError.cycle([property])
+                throw Error.cycle([property])
             }
 
             let conditionPropertySet = Set(configItem.conditions.map(\.property))
             guard !conditionPropertySet.contains(property) else {
-                throw EvalError.cycle([property])
+                throw Error.cycle([property])
             }
 
             if conditionProperties[property] == nil {
@@ -112,7 +118,7 @@ extension PiConfig {
             }
 
             if let conflict = conditionProperties[property]?.first(where: { !$0.isSubset(of: conditionPropertySet) }) {
-                throw EvalError.conditionalAssignment(
+                throw Error.conditionalAssignment(
                     ofProperty: property,
                     conditions: Array(configItem.conditions),
                     couldConflictWith: Array(conflict))
@@ -135,7 +141,7 @@ extension PiConfig {
 
         var seen: Set<Property> = []
         if let cycle = Self.findCycle(dependencyGraph, seen: &seen) {
-            throw EvalError.cycle(.init(cycle))
+            throw Error.cycle(.init(cycle))
         }
 
         let roots = dependencyGraph.values.reduce(into: Set(tree.keys)) { $0.subtract($1) }

@@ -21,7 +21,7 @@ extension PiConfig.IngestedConfig {
         conditions: inout Set<Condition>,
         weights: ConditionWeights,
         defines: inout Defines
-    ) -> String? {
+    ) throws -> String? {
         guard let elements = graph[property]?.values, !elements.isEmpty else {
             defines[property] = nil
             conditions.insert(.falsey(property))
@@ -77,7 +77,7 @@ extension PiConfig.IngestedConfig {
             for condition in assignmentConditions {
                 // If we haven't evaluated the value first, recurse.
                 if !defines.includes(condition.property) {
-                    eval(
+                    try eval(
                         property: condition.property,
                         graph: &graph,
                         conditions: &conditions,
@@ -106,10 +106,17 @@ extension PiConfig.IngestedConfig {
                 case .left(let literal):
                     evaluatedValue! += literal
                 case .right(let reference):
+                    // If an `$(inherited)` value has been left behind, then that means that we're at the top level and
+                    // no define has been provided for `property`, in which case we shouldn't continue, because the
+                    // config author expected the user to define a default value for it.
+                    guard reference != .inherited else {
+                        throw PiConfig.Error.noDefaultValueProvided(forProperty: property)
+                    }
+
                     if let definedValue = defines[reference] {
                         evaluatedValue! += definedValue ?? ""
                     } else {
-                        evaluatedValue! += eval(
+                        evaluatedValue! += try eval(
                             property: reference,
                             graph: &graph,
                             conditions: &conditions,
@@ -126,7 +133,7 @@ extension PiConfig.IngestedConfig {
         return evaluatedValue
     }
 
-    public func eval(initialValues: Defines) -> Defines {
+    public func eval(initialValues: Defines) throws -> Defines {
         var defines: Defines = initialValues
         var graph = properties
 
@@ -136,7 +143,7 @@ extension PiConfig.IngestedConfig {
         }
 
         for root in roots {
-            _ = eval(
+            _ = try eval(
                 property: root,
                 graph: &graph,
                 conditions: &conditions,

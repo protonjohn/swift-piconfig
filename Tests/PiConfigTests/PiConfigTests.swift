@@ -37,7 +37,7 @@ final class PiConfigTests: XCTestCase {
         let parsed = try PiConfig.parser.parse(piConfig)
         let ingested = try parsed.ingest()
 
-        let values = ingested.eval(initialValues: [
+        let values = try ingested.eval(initialValues: [
             "platform": "pc",
             "configuration": "Staging",
             "CI": "any truthy value",
